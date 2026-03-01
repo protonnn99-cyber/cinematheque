@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e0c0a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Cinémathèque" />
+  <link rel="manifest" href="manifest.json" />
+  <title>Cinémathèque</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0c0a;
+      --bg2: #16130f;
+      --bg3: #1e1a15;
+      --gold: #c8860a;
+      --gold2: #e0a030;
+      --text: #f0ece4;
+      --text2: #b0a898;
+      --text3: #7a706a;
+      --text4: #4a4038;
+      --border: rgba(255,255,255,0.09);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%; background: var(--bg);
+      font-family: 'Lato', sans-serif;
+      color: var(--text);
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #app {
+      max-width: 430px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* ── GRAIN ── */
+    #grain {
+      position: fixed; inset: 0; pointer-events: none; z-index: 999; opacity: 0.35;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed; top: calc(var(--safe-top) + 16px); left: 50%; transform: translateX(-50%) translateY(-80px);
+      background: var(--gold); color: var(--bg); padding: 10px 22px; border-radius: 30px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.05em; white-space: nowrap;
+      z-index: 9999; transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── VIEWS ── */
+    .view { display: none; flex-direction: column; min-height: 100vh; padding-bottom: calc(72px + var(--safe-bottom)); }
+    .view.active { display: flex; }
+
+    /* ── NAV ── */
+    #nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px;
+      background: rgba(14,12,10,0.96); backdrop-filter: blur(24px) saturate(180%);
+      border-top: 1px solid var(--border);
+      display: flex; z-index: 100;
+      padding-bottom: var(--safe-bottom);
+    }
+    .nav-btn {
+      flex: 1; background: none; border: none; color: var(--text3);
+      cursor: pointer; padding: 12px 8px 14px; font-family: inherit;
+      transition: color 0.2s; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    }
+    .nav-btn.active { color: var(--gold); }
+    .nav-btn .nav-icon { font-size: 22px; line-height: 1; }
+    .nav-btn .nav-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+
+    /* ── TYPOGRAPHY ── */
+    .display { font-family: 'Playfair Display', serif; }
+    .display-italic { font-family: 'Playfair Display', serif; font-style: italic; }
+
+    /* ── LIBRARY ── */
+    #view-library { animation: fadeIn 0.25s ease; }
+
+    .library-header {
+      padding: calc(var(--safe-top) + 44px) 22px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+    .library-eyebrow { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+    .library-title { font-size: 40px; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em; }
+    .library-title .accent { color: var(--gold); }
+
+    .stats-row { display: flex; gap: 0; margin-top: 20px; }
+    .stat {
+      flex: 1; padding-right: 16px;
+      border-right: 1px solid var(--border);
+      margin-right: 16px;
+    }
+    .stat:last-child { border-right: none; margin-right: 0; padding-right: 0; }
+    .stat-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
+    .stat-value { font-size: 17px; font-family: 'Playfair Display', serif; }
+
+    .save-badge { font-size: 10px; color: var(--text4); margin-top: 10px; letter-spacing: 0.05em; }
+
+    /* ── SEARCH/FILTER ── */
+    .search-row { padding: 14px 22px 0; display: flex; gap: 10px; }
+    .search-input {
+      flex: 1; background: rgba(255,255,255,0.055); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); padding: 9px 14px; font-size: 14px;
+      font-family: inherit; outline: none; transition: border-color 0.2s;
+    }
+    .search-input:focus { border-color: rgba(200,134,10,0.45); }
+    .search-input::placeholder { color: var(--text3); }
+    .sort-select {
+      background: rgba(255,255,255,0.055); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text3); padding: 9px 10px;
+      font-family: inherit; font-size: 12px; outline: none; cursor: pointer;
+    }
+    .sort-select option { background: #1a1714; }
+
+    .genre-scroll {
+      padding: 12px 22px 0; display: flex; gap: 8px;
+      overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .genre-scroll::-webkit-scrollbar { display: none; }
+    .genre-chip {
+      border: none; border-radius: 20px; padding: 6px 14px;
+      font-size: 12px; cursor: pointer; white-space: nowrap;
+      font-family: inherit; letter-spacing: 0.04em; transition: all 0.2s;
+      background: rgba(255,255,255,0.07); color: var(--text3);
+    }
+    .genre-chip.active { background: var(--gold); color: var(--bg); font-weight: 700; }
+
+    /* ── MOVIE CARDS ── */
+    .cards { padding: 16px 22px 0; display: flex; flex-direction: column; gap: 11px; }
+    .card {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 13px; padding: 15px 17px;
+      display: flex; gap: 14px; align-items: flex-start;
+      cursor: pointer; transition: background 0.2s, transform 0.15s;
+      animation: slideUp 0.3s ease both;
+    }
+    .card:active { background: rgba(255,255,255,0.07); transform: scale(0.985); }
+    .card-poster { font-size: 38px; line-height: 1; flex-shrink: 0; }
+    .card-body { flex: 1; min-width: 0; }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .card-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 16px; line-height: 1.25; }
+    .card-stars { color: var(--gold); font-size: 13px; flex-shrink: 0; }
+    .card-meta { font-size: 12px; color: var(--text3); margin-top: 4px; }
+    .card-meta .genre-dot { font-size: 12px; }
+    .card-review { font-size: 12px; color: var(--text2); margin-top: 7px; line-height: 1.55; font-style: italic;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .card-date { font-size: 10px; color: var(--text4); margin-top: 7px; letter-spacing: 0.04em; }
+
+    .empty-state { text-align: center; padding: 70px 30px; color: var(--text3); font-style: italic; line-height: 1.7; }
+    .empty-icon { font-size: 44px; margin-bottom: 14px; display: block; }
+
+    /* ── DETAIL ── */
+    #view-detail { animation: fadeIn 0.2s ease; }
+    .detail-topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: calc(var(--safe-top) + 44px) 22px 0;
+    }
+    .back-btn {
+      background: none; border: none; color: var(--gold); cursor: pointer;
+      font-family: inherit; font-size: 14px; letter-spacing: 0.04em; padding: 0;
+    }
+    .detail-actions { display: flex; gap: 10px; }
+    .action-btn {
+      border-radius: 20px; padding: 6px 16px; font-size: 12px;
+      cursor: pointer; font-family: inherit; transition: all 0.2s; border: 1px solid;
+    }
+    .edit-btn { background: rgba(200,134,10,0.1); border-color: rgba(200,134,10,0.35); color: var(--gold); }
+    .edit-btn.active { background: rgba(200,134,10,0.25); border-color: var(--gold); }
+    .del-btn { background: rgba(180,50,50,0.1); border-color: rgba(180,50,50,0.3); color: #e06060; }
+
+    .detail-poster-area { text-align: center; padding: 28px 22px 0; }
+    .detail-poster { font-size: 72px; line-height: 1; }
+    .detail-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 28px; font-weight: 400; margin-top: 16px; line-height: 1.2; }
+    .detail-meta { font-size: 13px; color: var(--text3); margin-top: 6px; }
+    .detail-stars { display: flex; justify-content: center; gap: 6px; margin-top: 14px; font-size: 30px; }
+    .detail-watch-date { text-align: center; font-size: 11px; color: var(--text4); margin-top: 8px; letter-spacing: 0.05em; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 22px 22px 0; }
+
+    .review-section { padding: 22px 22px 0; }
+    .section-label { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text3); margin-bottom: 14px; }
+    .review-blockquote {
+      border-left: 2px solid var(--gold); padding-left: 18px;
+      font-family: 'Playfair Display', serif; font-style: italic;
+      font-size: 16px; line-height: 1.75; color: #d0c8be;
+    }
+    .no-review { color: var(--text4); font-style: italic; font-size: 14px; }
+
+    /* ── EDIT FORM ── */
+    .edit-form { padding: 22px 22px 0; display: flex; flex-direction: column; gap: 16px; }
+    .field-label {
+      font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text3); margin-bottom: 6px; display: block;
+    }
+    .field-input {
+      width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text); padding: 10px 14px;
+      font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.2s;
+    }
+    .field-input:focus { border-color: rgba(200,134,10,0.45); }
+    .field-input.textarea { resize: vertical; min-height: 110px; line-height: 1.65; }
+    .row-2 { display: flex; gap: 10px; }
+    .row-2 > div { flex: 1; }
+    .save-changes-btn {
+      background: var(--gold); color: var(--bg); border: none; border-radius: 11px;
+      padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer;
+      font-family: inherit; letter-spacing: 0.05em; transition: background 0.2s;
+    }
+    .save-changes-btn:active { background: var(--gold2); }
+
+    /* ── ADD VIEW ── */
+    #view-add { animation: fadeIn 0.2s ease; }
+    .add-header {
+      padding: calc(var(--safe-top) + 44px) 22px 0;
+      border-bottom: 1px solid var(--border); padding-bottom: 22px;
+    }
+    .add-eyebrow { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+    .add-title { font-size: 30px; font-weight: 400; font-family: 'Playfair Display', serif; font-style: italic; }
+
+    .emoji-section { padding: 22px 22px 0; }
+    .emoji-preview { font-size: 58px; text-align: center; margin-bottom: 14px; }
+    .emoji-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .emoji-option {
+      font-size: 26px; background: rgba(255,255,255,0.05);
+      border: 1px solid transparent; border-radius: 9px; padding: 7px 11px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .emoji-option.selected { background: rgba(200,134,10,0.2); border-color: var(--gold); }
+
+    .add-form { padding: 20px 22px 0; display: flex; flex-direction: column; gap: 16px; }
+    .submit-btn {
+      background: var(--gold); color: var(--bg); border: none; border-radius: 12px;
+      padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer;
+      font-family: inherit; letter-spacing: 0.06em; transition: background 0.2s;
+      margin-top: 6px;
+    }
+    .submit-btn:active { background: var(--gold2); }
+
+    /* ── STAR RATING INPUT ── */
+    .star-input { display: flex; gap: 6px; }
+    .star-btn {
+      font-size: 34px; background: none; border: none; cursor: pointer;
+      transition: transform 0.15s, filter 0.15s;
+      filter: brightness(0.3); line-height: 1; padding: 2px;
+    }
+    .star-btn.on { filter: brightness(1); color: var(--gold); }
+    .star-btn:active { transform: scale(1.25); }
+
+    /* ── DELETE MODAL ── */
+    #delete-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.82);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 28px; opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    #delete-modal.show { opacity: 1; pointer-events: all; }
+    .modal-box {
+      background: #1c1814; border: 1px solid var(--border);
+      border-radius: 18px; padding: 30px 26px; text-align: center;
+      max-width: 320px; width: 100%;
+      transform: scale(0.92); transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    #delete-modal.show .modal-box { transform: scale(1); }
+    .modal-icon { font-size: 36px; margin-bottom: 14px; }
+    .modal-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 19px; margin-bottom: 8px; line-height: 1.3; }
+    .modal-body { font-size: 13px; color: var(--text3); margin-bottom: 24px; line-height: 1.6; }
+    .modal-btns { display: flex; gap: 10px; }
+    .modal-cancel { flex: 1; background: rgba(255,255,255,0.07); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 13px; cursor: pointer; font-family: inherit; font-size: 14px; }
+    .modal-delete { flex: 1; background: #b03030; border: none; color: #fff; border-radius: 10px; padding: 13px; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 700; }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+    input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.55); cursor: pointer; }
+    select option { background: #1a1714; }
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="grain"></div>
+<div id="toast"></div>
+
+<div id="app">
+
+  <!-- ══ LIBRARY VIEW ══ -->
+  <div id="view-library" class="view active">
+    <div class="library-header">
+      <div class="library-eyebrow">My Collection</div>
+      <h1 class="library-title display-italic">Ciné<span class="accent">thèque</span></h1>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-label">Films</div>
+          <div class="stat-value" id="stat-count">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Avg Rating</div>
+          <div class="stat-value" id="stat-avg">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Top Genre</div>
+          <div class="stat-value" id="stat-genre">—</div>
+        </div>
+      </div>
+      <div class="save-badge">💾 Data saved on your device</div>
+    </div>
+
+    <div class="search-row">
+      <input type="search" class="search-input" id="search-input" placeholder="Search films…" />
+      <select class="sort-select" id="sort-select">
+        <option value="recent">Recent</option>
+        <option value="rating">Rating</option>
+        <option value="title">A–Z</option>
+      </select>
+    </div>
+
+    <div class="genre-scroll" id="genre-filter"></div>
+
+    <div class="cards" id="cards-container">
+      <div class="empty-state">
+        <span class="empty-icon">🎬</span>
+        Your library is empty.<br />Add your first film below.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ DETAIL VIEW ══ -->
+  <div id="view-detail" class="view">
+    <div class="detail-topbar">
+      <button class="back-btn" onclick="showView('library')">← Back</button>
+      <div class="detail-actions">
+        <button class="action-btn edit-btn" id="edit-toggle-btn" onclick="toggleEdit()">Edit</button>
+        <button class="action-btn del-btn" onclick="openDeleteModal()">Delete</button>
+      </div>
+    </div>
+
+    <!-- Read mode -->
+    <div id="detail-read">
+      <div class="detail-poster-area">
+        <div class="detail-poster" id="detail-poster"></div>
+        <div class="detail-title display-italic" id="detail-title"></div>
+        <div class="detail-meta" id="detail-meta"></div>
+        <div class="detail-stars" id="detail-stars"></div>
+        <div class="detail-watch-date" id="detail-watch-date"></div>
+      </div>
+      <hr class="divider" />
+      <div class="review-section">
+        <div class="section-label">My Review</div>
+        <div id="detail-review"></div>
+      </div>
+    </div>
+
+    <!-- Edit mode -->
+    <div id="detail-edit" style="display:none">
+      <div class="edit-form">
+        <div>
+          <label class="field-label">Title</label>
+          <input class="field-input" id="edit-title" type="text" />
+        </div>
+        <div class="row-2">
+          <div>
+            <label class="field-label">Year</label>
+            <input class="field-input" id="edit-year" type="number" min="1888" max="2099" />
+          </div>
+          <div>
+            <label class="field-label">Genre</label>
+            <select class="field-input" id="edit-genre"></select>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Rating</label>
+          <div class="star-input" id="edit-stars"></div>
+        </div>
+        <div>
+          <label class="field-label">Date Watched</label>
+          <input class="field-input" id="edit-watched" type="date" />
+        </div>
+        <div>
+          <label class="field-label">Your Review</label>
+          <textarea class="field-input textarea" id="edit-review" placeholder="Your thoughts…"></textarea>
+        </div>
+        <button class="save-changes-btn" onclick="saveEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ADD VIEW ══ -->
+  <div id="view-add" class="view">
+    <div class="add-header">
+      <div class="add-eyebrow">Add to Library</div>
+      <div class="add-title">New Film</div>
+    </div>
+
+    <div class="emoji-section">
+      <label class="field-label">Film Poster</label>
+      <div class="emoji-preview" id="add-poster-preview">🎬</div>
+      <div class="emoji-grid" id="emoji-grid"></div>
+    </div>
+
+    <div class="add-form">
+      <div>
+        <label class="field-label">Title *</label>
+        <input class="field-input" id="add-title" type="text" placeholder="Film title…" />
+      </div>
+      <div class="row-2">
+        <div>
+          <label class="field-label">Year</label>
+          <input class="field-input" id="add-year" type="number" min="1888" max="2099" />
+        </div>
+        <div>
+          <label class="field-label">Genre</label>
+          <select class="field-input" id="add-genre"></select>
+        </div>
+      </div>
+      <div>
+        <label class="field-label">Date Watched</label>
+        <input class="field-input" id="add-watched" type="date" />
+      </div>
+      <div>
+        <label class="field-label">Your Rating *</label>
+        <div class="star-input" id="add-stars"></div>
+      </div>
+      <div>
+        <label class="field-label">Your Review</label>
+        <textarea class="field-input textarea" id="add-review" placeholder="What did you think? Be honest…"></textarea>
+      </div>
+      <button class="submit-btn" onclick="submitAdd()">Add to Library</button>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- ══ DELETE MODAL ══ -->
+<div id="delete-modal">
+  <div class="modal-box">
+    <div class="modal-icon">🎬</div>
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-body">This will permanently remove this film from your library.</div>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button class="modal-delete" onclick="confirmDelete()">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ NAV ══ -->
+<div id="nav">
+  <button class="nav-btn active" id="nav-library" onclick="showView('library')">
+    <span class="nav-icon">🎞</span>
+    <span class="nav-label">Library</span>
+  </button>
+  <button class="nav-btn" id="nav-add" onclick="showView('add')">
+    <span class="nav-icon" style="font-size:26px;font-weight:300">＋</span>
+    <span class="nav-label">Add Film</span>
+  </button>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  DATA & CONSTANTS
+// ══════════════════════════════════════════
+const GENRES = ["Action","Adventure","Animation","Comedy","Crime","Documentary","Drama","Fantasy","Horror","Mystery","Romance","Sci-Fi","Thriller","Western"];
+const EMOJIS = ["🎬","🎭","🌙","🏜️","☢️","🚀","🔪","👻","💔","🌊","🦁","🕵️","🤠","🧬","🏰","⚔️","🌺","🎪","🐉","🌋","🎠","🌌"];
+const GENRE_COLORS = { "Action":"#e05c2a","Adventure":"#d4973a","Animation":"#e07abf","Comedy":"#f0c040","Crime":"#a04040","Documentary":"#5090c0","Drama":"#c8860a","Fantasy":"#9b68d4","Horror":"#b03030","Mystery":"#507090","Romance":"#d06090","Sci-Fi":"#3090c0","Thriller":"#805090","Western":"#c87840" };
+
+const SAMPLE = [
+  { id:1, title:"Dune: Part Two", year:2024, genre:"Sci-Fi", rating:5, review:"Visually breathtaking. Villeneuve at his absolute peak — every frame is a painting.", poster:"🏜️", watched:"2024-03-15" },
+  { id:2, title:"Oppenheimer", year:2023, genre:"Drama", rating:5, review:"A cerebral masterpiece. Cillian Murphy deserved every award. The Trinity sequence haunts me.", poster:"☢️", watched:"2023-07-22" },
+  { id:3, title:"Past Lives", year:2023, genre:"Romance", rating:4, review:"Quietly devastating. The final scene destroyed me in the best possible way.", poster:"🌙", watched:"2023-09-10" },
+];
+
+// ══════════════════════════════════════════
+//  STORAGE (localStorage — works on device)
+// ══════════════════════════════════════════
+const LS_MOVIES = "cinetheque:movies";
+const LS_ID = "cinetheque:nextId";
+
+function loadMovies() {
+  try {
+    const raw = localStorage.getItem(LS_MOVIES);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  // First launch — seed samples
+  saveMovies(SAMPLE);
+  return SAMPLE;
+}
+
+function saveMovies(arr) {
+  try { localStorage.setItem(LS_MOVIES, JSON.stringify(arr)); } catch(e) {}
+}
+
+function getNextId() {
+  try {
+    const v = localStorage.getItem(LS_ID);
+    return v ? parseInt(v) : 100;
+  } catch(e) { return 100; }
+}
+
+function bumpId(id) {
+  try { localStorage.setItem(LS_ID, String(id + 1)); } catch(e) {}
+}
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let movies = loadMovies();
+let nextId = getNextId();
+let currentFilter = "All";
+let currentSort = "recent";
+let currentSearch = "";
+let selectedId = null;
+let editRating = 0;
+let addRating = 0;
+let addPoster = "🎬";
+let editMode = false;
+
+// ══════════════════════════════════════════
+//  VIEWS
+// ══════════════════════════════════════════
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  const navBtn = document.getElementById('nav-' + name);
+  if (navBtn) navBtn.classList.add('active');
+  if (name === 'library') renderLibrary();
+  if (name === 'add') initAddForm();
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ══════════════════════════════════════════
+//  GENRE COLOR
+// ══════════════════════════════════════════
+function gc(genre) { return GENRE_COLORS[genre] || '#888'; }
+
+// ══════════════════════════════════════════
+//  LIBRARY
+// ══════════════════════════════════════════
+function renderLibrary() {
+  // Stats
+  const count = movies.length;
+  const avg = count ? (movies.reduce((s,m) => s + m.rating, 0) / count).toFixed(1) : '—';
+  const counts = {};
+  movies.forEach(m => counts[m.genre] = (counts[m.genre]||0)+1);
+  const topGenre = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0] || '—';
+  document.getElementById('stat-count').textContent = count;
+  document.getElementById('stat-avg').textContent = count ? avg + ' ★' : '—';
+  document.getElementById('stat-genre').textContent = topGenre;
+
+  // Genre filter chips
+  const gf = document.getElementById('genre-filter');
+  gf.innerHTML = '';
+  ['All', ...GENRES].forEach(g => {
+    const btn = document.createElement('button');
+    btn.className = 'genre-chip' + (g === currentFilter ? ' active' : '');
+    btn.textContent = g;
+    btn.onclick = () => { currentFilter = g; renderLibrary(); };
+    gf.appendChild(btn);
+  });
+
+  // Filter + sort
+  let list = movies
+    .filter(m => currentFilter === 'All' || m.genre === currentFilter)
+    .filter(m => m.title.toLowerCase().includes(currentSearch.toLowerCase()));
+  if (currentSort === 'recent') list.sort((a,b) => new Date(b.watched) - new Date(a.watched));
+  else if (currentSort === 'rating') list.sort((a,b) => b.rating - a.rating);
+  else list.sort((a,b) => a.title.localeCompare(b.title));
+
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+
+  if (!list.length) {
+    container.innerHTML = `<div class="empty-state"><span class="empty-icon">🎞</span>${movies.length ? 'No films match your search.' : 'Your library is empty.<br>Add your first film below.'}</div>`;
+    return;
+  }
+
+  list.forEach((m, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.animationDelay = (i * 0.045) + 's';
+    card.style.borderLeft = '3px solid ' + gc(m.genre);
+    card.innerHTML = `
+      <div class="card-poster">${m.poster}</div>
+      <div class="card-body">
+        <div class="card-top">
+          <div class="card-title">${escHtml(m.title)}</div>
+          <div class="card-stars">${'★'.repeat(m.rating)}</div>
+        </div>
+        <div class="card-meta">${m.year} · <span style="color:${gc(m.genre)}">${m.genre}</span></div>
+        ${m.review ? `<div class="card-review">"${escHtml(m.review)}"</div>` : ''}
+        <div class="card-date">${fmtDate(m.watched)}</div>
+      </div>`;
+    card.onclick = () => openDetail(m.id);
+    container.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════
+//  DETAIL
+// ══════════════════════════════════════════
+function openDetail(id) {
+  selectedId = id;
+  editMode = false;
+  const m = movies.find(x => x.id === id);
+  renderDetail(m);
+  showView('detail');
+  document.getElementById('nav-library').classList.add('active');
+}
+
+function renderDetail(m) {
+  document.getElementById('detail-poster').textContent = m.poster;
+  document.getElementById('detail-title').textContent = m.title;
+  document.getElementById('detail-meta').innerHTML = `${m.year} · <span style="color:${gc(m.genre)}">${m.genre}</span>`;
+  document.getElementById('detail-stars').innerHTML = [1,2,3,4,5].map(s => `<span style="filter:brightness(${s<=m.rating?1:0.2});color:var(--gold)">★</span>`).join('');
+  document.getElementById('detail-watch-date').textContent = 'Watched ' + fmtDate(m.watched);
+  document.getElementById('detail-review').innerHTML = m.review
+    ? `<blockquote class="review-blockquote">"${escHtml(m.review)}"</blockquote>`
+    : `<p class="no-review">No review yet. Tap Edit to add one.</p>`;
+  document.getElementById('detail-read').style.display = '';
+  document.getElementById('detail-edit').style.display = 'none';
+  const eb = document.getElementById('edit-toggle-btn');
+  eb.textContent = 'Edit'; eb.classList.remove('active');
+}
+
+function toggleEdit() {
+  editMode = !editMode;
+  const m = movies.find(x => x.id === selectedId);
+  const eb = document.getElementById('edit-toggle-btn');
+  if (editMode) {
+    eb.textContent = 'Cancel'; eb.classList.add('active');
+    document.getElementById('detail-read').style.display = 'none';
+    document.getElementById('detail-edit').style.display = '';
+    // Populate edit form
+    document.getElementById('edit-title').value = m.title;
+    document.getElementById('edit-year').value = m.year;
+    document.getElementById('edit-watched').value = m.watched;
+    document.getElementById('edit-review').value = m.review || '';
+    buildGenreSelect('edit-genre', m.genre);
+    editRating = m.rating;
+    buildStarInput('edit-stars', editRating, r => { editRating = r; buildStarInput('edit-stars', editRating, arguments.callee); });
+  } else {
+    eb.textContent = 'Edit'; eb.classList.remove('active');
+    renderDetail(m);
+  }
+}
+
+function saveEdit() {
+  const idx = movies.findIndex(x => x.id === selectedId);
+  movies[idx] = {
+    ...movies[idx],
+    title: document.getElementById('edit-title').value.trim() || movies[idx].title,
+    year: parseInt(document.getElementById('edit-year').value) || movies[idx].year,
+    genre: document.getElementById('edit-genre').value,
+    watched: document.getElementById('edit-watched').value || movies[idx].watched,
+    review: document.getElementById('edit-review').value.trim(),
+    rating: editRating || movies[idx].rating,
+  };
+  saveMovies(movies);
+  editMode = false;
+  renderDetail(movies[idx]);
+  toast('Review updated!');
+}
+
+// ══════════════════════════════════════════
+//  DELETE
+// ══════════════════════════════════════════
+function openDeleteModal() {
+  const m = movies.find(x => x.id === selectedId);
+  document.getElementById('modal-title').textContent = `Remove "${m.title}"?`;
+  document.getElementById('delete-modal').classList.add('show');
+}
+function closeDeleteModal() { document.getElementById('delete-modal').classList.remove('show'); }
+function confirmDelete() {
+  movies = movies.filter(x => x.id !== selectedId);
+  saveMovies(movies);
+  closeDeleteModal();
+  showView('library');
+  toast('Removed from library');
+}
+
+// ══════════════════════════════════════════
+//  ADD
+// ══════════════════════════════════════════
+function initAddForm() {
+  addPoster = '🎬';
+  addRating = 0;
+  document.getElementById('add-title').value = '';
+  document.getElementById('add-year').value = new Date().getFullYear();
+  document.getElementById('add-review').value = '';
+  document.getElementById('add-watched').value = new Date().toISOString().slice(0,10);
+  document.getElementById('add-poster-preview').textContent = addPoster;
+  buildGenreSelect('add-genre', 'Drama');
+  buildStarInput('add-stars', addRating, r => { addRating = r; buildStarInput('add-stars', addRating, arguments.callee); });
+
+  // Emoji grid
+  const grid = document.getElementById('emoji-grid');
+  grid.innerHTML = '';
+  EMOJIS.forEach(e => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-option' + (e === addPoster ? ' selected' : '');
+    btn.textContent = e;
+    btn.onclick = () => {
+      addPoster = e;
+      document.getElementById('add-poster-preview').textContent = e;
+      grid.querySelectorAll('.emoji-option').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function submitAdd() {
+  const title = document.getElementById('add-title').value.trim();
+  if (!title) { toast('Please enter a title'); return; }
+  if (!addRating) { toast('Please add a rating'); return; }
+  const movie = {
+    id: nextId,
+    title,
+    year: parseInt(document.getElementById('add-year').value) || new Date().getFullYear(),
+    genre: document.getElementById('add-genre').value,
+    rating: addRating,
+    review: document.getElementById('add-review').value.trim(),
+    poster: addPoster,
+    watched: document.getElementById('add-watched').value || new Date().toISOString().slice(0,10),
+  };
+  bumpId(nextId);
+  nextId++;
+  movies.unshift(movie);
+  saveMovies(movies);
+  showView('library');
+  toast('Film added to your library! 🎬');
+}
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function buildGenreSelect(id, selected) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = GENRES.map(g => `<option value="${g}"${g===selected?' selected':''}>${g}</option>`).join('');
+}
+
+function buildStarInput(containerId, current, onChange) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  for (let s = 1; s <= 5; s++) {
+    const btn = document.createElement('button');
+    btn.className = 'star-btn' + (s <= current ? ' on' : '');
+    btn.textContent = '★';
+    btn.type = 'button';
+    const val = s;
+    btn.onclick = () => onChange(val);
+    el.appendChild(btn);
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(d) {
+  try { return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }); }
+  catch(e) { return d; }
+}
+
+// ══════════════════════════════════════════
+//  SEARCH + SORT EVENTS
+// ══════════════════════════════════════════
+document.getElementById('search-input').addEventListener('input', e => {
+  currentSearch = e.target.value;
+  renderLibrary();
+});
+document.getElementById('sort-select').addEventListener('change', e => {
+  currentSort = e.target.value;
+  renderLibrary();
+});
+
+// ══════════════════════════════════════════
+//  SERVICE WORKER REGISTRATION
+// ══════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
+  });
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+renderLibrary();
+</script>
+</body>
+</html>
